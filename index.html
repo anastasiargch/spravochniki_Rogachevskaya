@@ -5,7 +5,7 @@
     <title>Справочник: Фильмы и Режиссеры</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
-        .header-info { background: #0078D7; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .header-info { background: #895c9e; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
         .controls { margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
         select, button, input, textarea { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
         button { background: #28a745; color: white; border: none; cursor: pointer; }
@@ -14,7 +14,7 @@
         .btn-delete { background: #dc3545; color: white; }
         table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background: #0078D7; color: white; cursor: pointer; }
+        th { background: #895c9e; color: white; cursor: pointer; }
         th:hover { background: #005bb5; }
         td { vertical-align: top; }
         td.description-cell {
@@ -227,7 +227,7 @@
 
             for (let key in config.types) {
                 const type = config.types[key];
-                const label = config.headers[key];
+                const label = key === 'director_id' ? config.headers.director_name : config.headers[key];
                 const group = document.createElement('div');
                 group.className = 'form-group';
                 group.innerHTML = `<label><strong>${label}:</strong></label>`;
