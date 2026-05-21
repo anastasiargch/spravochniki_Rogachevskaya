@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Справочник: Фильмы и Режиссеры</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; }
+        .header-info { background: #0078D7; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .controls { margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
+        select, button, input, textarea { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+        button { background: #28a745; color: white; border: none; cursor: pointer; }
+        button:hover { background: #218838; }
+        .btn-edit { background: #ffc107; color: black; }
+        .btn-delete { background: #dc3545; color: white; }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #0078D7; color: white; cursor: pointer; }
+        th:hover { background: #005bb5; }
+        td { vertical-align: top; }
+        td.description-cell {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-width: 300px;
+        }
+        dialog { border: none; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); width: 400px; padding: 20px; }
+        dialog::backdrop { background: rgba(0,0,0,0.5); }
+        .form-group { display: flex; flex-direction: column; margin-bottom: 15px; }
+        .form-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        textarea { resize: vertical; font-family: inherit; }
+    </style>
+</head>
+<body>
+
+    <div class="header-info">
+        <strong>Выполнила:</strong> Рогачевская Анастасия, 3 курс, 2 группа, 2026
+    </div>
+
+    <div class="controls">
+        <label for="dict-select"><strong>Выберите справочник:</strong></label>
+        <select id="dict-select" onchange="loadData()">
+            <option value="directors">Режиссёры</option>
+            <option value="movies">Фильмы</option>
+        </select>
+        <button onclick="openModal()">+ Добавить запись</button>
+    </div>
+
+    <table id="data-table">
+        <thead id="table-head"></thead>
+        <tbody id="table-body"></tbody>
+    </table>
+
+    <dialog id="editor-dialog">
+        <h3 id="modal-title">Редактирование</h3>
+        <form id="editor-form" onsubmit="saveData(event)">
+            <input type="hidden" id="edit-id">
+            <div id="form-fields"></div>
+            <div class="form-actions">
+                <button type="button" onclick="closeModal()" style="background: #6c757d;">Отмена</button>
+                <button type="submit">Сохранить</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script>
+        const API_URL = '/api';
+        let currentData = [];
+        let sortCol = '';
+        let sortAsc = true;
+
+        const DICTIONARIES = {
+            directors: {
+                headers: { full_name: "ФИО", birth_date: "Дата рождения", movies_count: "Кол-во фильмов" },
+                types: { full_name: "text", birth_date: "date", movies_count: "number" }
+            },
+            movies: {
+                headers: {
+                    title: "Название",
+                    director_name: "Режиссёр",
+                    release_date: "Дата выхода",
+                    duration_minutes: "Длительность (мин)",
+                    rating: "Рейтинг",
+                    description: "Описание"
+                },
+                types: {
+                    title: "text",
+                    director_id: "select",
+                    release_date: "date",
+                    duration_minutes: "number",
+                    rating: "number",
+                    description: "textarea"
+                }
+            }
+        };
+
+        async function loadData() {
+            const dict = document.getElementById('dict-select').value;
+            try {
+                const res = await fetch(`${API_URL}/${dict}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                currentData = await res.json();
+                renderTable();
+            } catch (error) { alert('Ошибка загрузки: ' + error.message); }
+        }
+
+        function formatDateForDisplay(dateStr) {
+            if (!dateStr) return '—';
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}.${parts[1]}.${parts[0]}`;
+            }
+            return dateStr;
+        }
+
+        function renderTable() {
+            const dict = document.getElementById('dict-select').value;
+            const config = DICTIONARIES[dict];
+            const thead = document.getElementById('table-head');
+            const tbody = document.getElementById('table-body');
+
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+
+            const trHead = document.createElement('tr');
+            for (let key in config.headers) {
+                const th = document.createElement('th');
+                const sortIndicator = (sortCol === key) ? (sortAsc ? ' ↑' : ' ↓') : ' ↕';
+                th.innerText = config.headers[key] + sortIndicator;
+                th.onclick = () => sortData(key);
+                trHead.appendChild(th);
+            }
+            const thActions = document.createElement('th');
+            thActions.innerText = 'Действия';
+            trHead.appendChild(thActions);
+            thead.appendChild(trHead);
+
+            currentData.forEach(item => {
+                const tr = document.createElement('tr');
+                for (let key in config.headers) {
+                    const td = document.createElement('td');
+
+                    if (key === 'description') {
+                        td.className = 'description-cell';
+                        const val = item[key] || '';
+                        td.innerText = val;
+                        td.title = val;
+                    } else if (key === 'release_date' || key === 'birth_date') {
+                        td.innerText = formatDateForDisplay(item[key]);
+                    } else {
+                        td.innerText = (item[key] !== null && item[key] !== undefined) ? item[key] : '—';
+                    }
+                    tr.appendChild(td);
+                }
+
+                const actions = document.createElement('td');
+                const itemStr = JSON.stringify(item).replace(/'/g, "&apos;").replace(/"/g, '&quot;');
+                actions.innerHTML = `
+                    <button class="btn-edit" onclick='editItem(${JSON.stringify(item).replace(/'/g, "&#39;")})'>Ред.</button>
+                    <button class="btn-delete" onclick="deleteItem(${item.id})">Удалить</button>
+                `;
+                tr.appendChild(actions);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function sortData(col) {
+            const dict = document.getElementById('dict-select').value;
+            const config = DICTIONARIES[dict];
+            let type = config.types[col];
+
+            if (col === 'director_name') type = 'text';
+
+            if (sortCol === col) {
+                sortAsc = !sortAsc;
+            } else {
+                sortAsc = true;
+                sortCol = col;
+            }
+
+            currentData.sort((a, b) => {
+                let valA = a[col];
+                let valB = b[col];
+
+                if (valA === null || valA === undefined) return sortAsc ? 1 : -1;
+                if (valB === null || valB === undefined) return sortAsc ? -1 : 1;
+
+                if (type === 'number' || col === 'movies_count' || col === 'duration_minutes' || col === 'rating') {
+                    valA = parseFloat(valA) || 0;
+                    valB = parseFloat(valB) || 0;
+                    return sortAsc ? valA - valB : valB - valA;
+                }
+                else if (col === 'release_date' || col === 'birth_date') {
+                    valA = new Date(valA);
+                    valB = new Date(valB);
+                    return sortAsc ? valA - valB : valB - valA;
+                }
+                else {
+                    valA = String(valA).toLowerCase();
+                    valB = String(valB).toLowerCase();
+                    if (sortAsc) {
+                        return valA.localeCompare(valB);
+                    } else {
+                        return valB.localeCompare(valA);
+                    }
+                }
+            });
+
+            renderTable();
+        }
+
+        async function openModal(rawItem = null) {
+            const dict = document.getElementById('dict-select').value;
+            const config = DICTIONARIES[dict];
+            const container = document.getElementById('form-fields');
+            container.innerHTML = '';
+
+            let item = rawItem;
+            if (rawItem && typeof rawItem === 'string') {
+                try {
+                    item = JSON.parse(rawItem);
+                } catch(e) {
+                    item = rawItem;
+                }
+            }
+
+            document.getElementById('edit-id').value = item ? item.id : '';
+            document.getElementById('modal-title').innerText = item ? 'Редактирование' : 'Добавление';
+
+            for (let key in config.types) {
+                const type = config.types[key];
+                const label = config.headers[key];
+                const group = document.createElement('div');
+                group.className = 'form-group';
+                group.innerHTML = `<label><strong>${label}:</strong></label>`;
+
+                let input;
+                if (type === 'textarea') {
+                    input = document.createElement('textarea');
+                    input.id = `input-${key}`;
+                    input.rows = 4;
+                    input.placeholder = "Введите описание...";
+                    input.style.whiteSpace = 'pre-wrap';
+                    input.style.wordWrap = 'break-word';
+                } else if (type === 'select') {
+                    input = document.createElement('select');
+                    input.id = `input-${key}`;
+                    try {
+                        const res = await fetch(`${API_URL}/dropdown/directors`);
+                        const directors = await res.json();
+                        directors.forEach(d => {
+                            const opt = document.createElement('option');
+                            opt.value = d.id;
+                            opt.innerText = d.full_name;
+                            if (item && item.director_id == d.id) opt.selected = true;
+                            input.appendChild(opt);
+                        });
+                    } catch (e) { console.error(e); }
+                } else {
+                    input = document.createElement('input');
+                    input.id = `input-${key}`;
+                    input.type = type === 'date' ? 'date' : (type === 'number' ? 'number' : 'text');
+                    if (key === 'rating') {
+                        input.step = '0.1';
+                        input.min = '0';
+                        input.max = '10';
+                    }
+                    if (key === 'duration_minutes' || key === 'movies_count') {
+                        input.min = '0';
+                    }
+                }
+
+                if (item && item[key] !== undefined && item[key] !== null) {
+                    input.value = item[key];
+                }
+
+                input.required = (key !== 'release_date' && key !== 'description');
+                group.appendChild(input);
+                container.appendChild(group);
+            }
+            document.getElementById('editor-dialog').showModal();
+        }
+
+        function editItem(item) {
+            openModal(item);
+        }
+
+        function closeModal() {
+            document.getElementById('editor-dialog').close();
+        }
+
+        async function saveData(e) {
+            e.preventDefault();
+            const dict = document.getElementById('dict-select').value;
+            const id = document.getElementById('edit-id').value;
+
+            let data = {};
+            if (dict === 'directors') {
+                data = {
+                    full_name: document.getElementById('input-full_name').value,
+                    birth_date: document.getElementById('input-birth_date').value,
+                    movies_count: parseInt(document.getElementById('input-movies_count').value) || 0
+                };
+            } else if (dict === 'movies') {
+                data = {
+                    title: document.getElementById('input-title').value,
+                    director_id: parseInt(document.getElementById('input-director_id').value),
+                    release_date: document.getElementById('input-release_date').value,
+                    duration_minutes: parseInt(document.getElementById('input-duration_minutes').value),
+                    rating: parseFloat(document.getElementById('input-rating').value),
+                    description: document.getElementById('input-description').value || ""
+                };
+            }
+
+            const method = id ? 'PUT' : 'POST';
+            const url = id ? `${API_URL}/${dict}/${id}` : `${API_URL}/${dict}`;
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    closeModal();
+                    loadData();
+                } else {
+                    const err = await res.json();
+                    alert("Ошибка: " + JSON.stringify(err.detail));
+                }
+            } catch (error) {
+                alert("Ошибка сети: " + error.message);
+            }
+        }
+
+        async function deleteItem(id) {
+            if (!confirm('Удалить запись?')) return;
+            const dict = document.getElementById('dict-select').value;
+            try {
+                await fetch(`${API_URL}/${dict}/${id}`, { method: 'DELETE' });
+                loadData();
+            } catch (error) {
+                alert("Ошибка удаления: " + error.message);
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
